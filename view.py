@@ -3,7 +3,8 @@ from jinja2 import Template
 import os
 
 from aiohttp import web
-
+import emails
+from emails.template import JinjaTemplate as T
 from serializers import serialize_body
 
 routes = web.RouteTableDef()
@@ -28,8 +29,9 @@ async def send_email(request: web.Request, body):
     # import ipdb; ipdb.set_trace()
     # print(message_template.render())
     # await email_sender(body['to_addr'], body['msg'], request.app['config'], subject)
-    await email_sender(body['to_addr'], message_template.render(), request.app['config'], subject)
-    return web.Response(status=200, content_type='application/json', body=json.dumps({'status': 'Ok'}))
+    # await email_sender(body['to_addr'], message_template, request.app['config'], subject)
+    response = await new_email_sender(body['to_addr'], body, request.app['config'], subject)
+    return web.Response(status=200, content_type='application/json', body=json.dumps(response))
 
 
 async def email_sender(toaddr: str, body: str, config: dict, subject=None):
@@ -48,10 +50,33 @@ async def email_sender(toaddr: str, body: str, config: dict, subject=None):
         server.starttls()
         server.login(fromaddr, config['EMAIL_PASSWORD'])
         text = msg.as_string()
-        server.sendmail(fromaddr, toaddr, text)
+        r = server.sendmail(fromaddr, toaddr, text)
+    
+
+async def new_email_sender(toaddr: str, body: str, config: dict, subject='None'):
+
+    with open(os.path.join(base_dir, 'email_template.html'), 'r', encoding='utf-8') as template_file:
+        template = template_file.read()
+
+    message = emails.html(
+        subject=subject,
+        html=T(template),
+        mail_from=('My StartUP', config['EMAIL_ADDRESS'])
+    )
+    response = message.send(
+        to=toaddr,
+        render={'massage': 'Congratulate', 'name': 'Djohn Black'},
+        smtp={'host': config['SMTP_SERVER'], 'port': config['SMTP_PORT'], 'tls': True, 'user': config['LOGIN'], 'password': config['PASSWORD']},
+    )
+    # import ipdb; ipdb.set_trace()
+
+    status = response.status_code
+    text = response.status_text.decode('utf-8').split()[1]
+
+    return {'status': status, 'message': text}
 
 
 async def read_template(filename):
     with open(filename, 'r', encoding='utf-8') as template_file:
-        template = Template(template_file.read())
+        template = template_file.read()
     return template
