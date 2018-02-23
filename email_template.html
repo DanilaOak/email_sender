@@ -260,8 +260,8 @@
                   <table border="0" cellpadding="0" cellspacing="0">
                     <tr>
                       <td>
-                        <p> {{ massage }}, {{ name }}!</p>
-                        <p>Sometimes you just want to send a simple HTML email with a simple design and clear call to action. This is it.</p>
+                        <p> Welcome aboard, {{ name }}!</p>
+                        <p> Please confirm your email address by clicking on the link below. We'll communicate with you from time to time via email so it's important that we have an up-to-date email address on file.</p>
                         <table border="0" cellpadding="0" cellspacing="0" class="btn btn-primary">
                           <tbody>
                             <tr>
@@ -269,7 +269,7 @@
                                 <table border="0" cellpadding="0" cellspacing="0">
                                   <tbody>
                                     <tr>
-                                      <td> <a href="http://htmlemail.io" target="_blank">Call To Action</a> </td>
+                                      <td> <a href="{{ verify_linc }}" target="_blank">Verify email</a> </td>
                                     </tr>
                                   </tbody>
                                 </table>
@@ -277,7 +277,8 @@
                             </tr>
                           </tbody>
                         </table>
-                        <p>This is a really simple email template. Its sole purpose is to get the recipient to click the button with no distractions.</p>
+                        <p>Your request will not be processed unless you confirm the address using this URL. This link expires 24 hours after your original verification request.</p>
+                        <p>If you did not sign up for account please disregard this email.</p>
                         <p>Good luck! Hope it works.</p>
                       </td>
                     </tr>

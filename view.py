@@ -1,8 +1,9 @@
 import json
 from jinja2 import Template
 import os
+from time import sleep
 
-from aiohttp import web
+from aiohttp import web, ClientSession
 import emails
 from emails.template import JinjaTemplate as T
 from serializers import serialize_body
@@ -17,6 +18,7 @@ from email6.mime.text import MIMEText
 
 base_dir = os.path.abspath(os.path.curdir)
 
+
 @routes.post('/api/v1/emails')
 @serialize_body('post_email')
 async def send_email(request: web.Request, body):
@@ -25,38 +27,27 @@ async def send_email(request: web.Request, body):
     if 'subject' in body:
         subject = body['subject']
 
-    message_template = await read_template(os.path.join(base_dir, 'email_template.html'))
-    # import ipdb; ipdb.set_trace()
-    # print(message_template.render())
-    # await email_sender(body['to_addr'], body['msg'], request.app['config'], subject)
-    # await email_sender(body['to_addr'], message_template, request.app['config'], subject)
-    response = await new_email_sender(body['to_addr'], body, request.app['config'], subject)
+    template = await read_template(os.path.join(base_dir, 'email_template.html'))
+
+    response = await email_sender(body, template, request.app['config'], subject)
     return web.Response(status=200, content_type='application/json', body=json.dumps(response))
 
 
-async def email_sender(toaddr: str, body: str, config: dict, subject=None):
-    fromaddr = config['EMAIL_ADDRESS']
+@routes.get('/api/v1/emails/{transaction_id}')
+async def check_email(request: web.Request):
+    transaction_id = request.match_info['transaction_id']
 
+    transaction_data = await check_transaction_status(transaction_id, request.app['config']['API_KEY'])
 
-    # msg = email.message.EmailMessage()
-    msg = MIMEMultipart('alternative')
-    msg['From'] = fromaddr
-    msg['To'] = toaddr
-    msg['Subject'] = subject if subject else 'None'
+    if not transaction_data['success']:
+        raise web.HTTPNotFound(content_type='application/json', body=json.dumps({'error': transaction_data['error']}))
 
-    msg.attach(MIMEText(body, 'html'))
-
-    with smtplib.SMTP(config['SMTP_SERVER'], config['SMTP_PORT']) as server:
-        server.starttls()
-        server.login(fromaddr, config['EMAIL_PASSWORD'])
-        text = msg.as_string()
-        r = server.sendmail(fromaddr, toaddr, text)
+    message_data = await check_message_status(transaction_data['data']['messageids'][0], request.app['config']['API_KEY'])
     
+    return web.Response(status=200, content_type='application/json', body=json.dumps({'transaction': transaction_data, 'message': message_data}))
 
-async def new_email_sender(toaddr: str, body: str, config: dict, subject='None'):
 
-    with open(os.path.join(base_dir, 'email_template.html'), 'r', encoding='utf-8') as template_file:
-        template = template_file.read()
+async def email_sender(body: dict, template: str, config: dict, subject='None'):
 
     message = emails.html(
         subject=subject,
@@ -64,19 +55,47 @@ async def new_email_sender(toaddr: str, body: str, config: dict, subject='None')
         mail_from=('My StartUP', config['EMAIL_ADDRESS'])
     )
     response = message.send(
-        to=toaddr,
-        render={'massage': 'Congratulate', 'name': 'Djohn Black'},
+        to=body['to_addr'],
+        render={'name': 'Djohn Black', 'verify_linc': 'www.fake.linc'},
         smtp={'host': config['SMTP_SERVER'], 'port': config['SMTP_PORT'], 'tls': True, 'user': config['LOGIN'], 'password': config['PASSWORD']},
     )
     # import ipdb; ipdb.set_trace()
-
+    print(response)
     status = response.status_code
     text = response.status_text.decode('utf-8').split()[1]
 
-    return {'status': status, 'message': text}
+    return {'status': status, 'transaction_id': text}
 
 
 async def read_template(filename):
     with open(filename, 'r', encoding='utf-8') as template_file:
         template = template_file.read()
     return template
+
+async def check_transaction_status(transaction_id: str, api_key: str):
+    params = {
+        'transactionID': transaction_id,
+        'apikey': api_key,
+        'showFailed': 'true',
+        'showErrors': 'true',
+        'showMessageIDs': 'true',
+        'showAbuse': 'true',
+        'showClicked': 'true',
+        'showDelivered': 'true',
+        'showOpened': 'true',
+        'showPending': 'true',
+        'showSent': 'true',
+        'showUnsubscribed': 'true',
+    }
+    async with ClientSession() as session:
+        async with session.get('https://api.elasticemail.com/v2/email/getstatus', params=params) as response:
+            return await response.json()
+
+async def check_message_status(message_id: str, api_key: str):
+    params = {
+        'apikey': api_key,
+        'messageID': message_id,
+    }
+    async with ClientSession() as session:
+        async with session.get('https://api.elasticemail.com/v2/email/status', params=params) as response:
+            return await response.json()
