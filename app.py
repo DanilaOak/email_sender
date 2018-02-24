@@ -10,7 +10,6 @@ from utils import get_config
 from view import routes
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-# 797527984991-1ipji3bp9ueprrrdjmlaukmclrtl4g6f.apps.googleusercontent.com
 
 def create_app(config=None):
 

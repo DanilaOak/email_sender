@@ -1,7 +1,5 @@
 import json
-from jinja2 import Template
 import os
-from time import sleep
 
 from aiohttp import web, ClientSession
 import emails
@@ -9,13 +7,6 @@ from emails.template import JinjaTemplate as T
 from serializers import serialize_body
 
 routes = web.RouteTableDef()
-
-import smtplib
-import email
-from email6.mime.multipart import MIMEMultipart
-from email6.mime.text import MIMEText
-
-
 base_dir = os.path.abspath(os.path.curdir)
 
 
@@ -33,18 +24,29 @@ async def send_email(request: web.Request, body):
     return web.Response(status=200, content_type='application/json', body=json.dumps(response))
 
 
-@routes.get('/api/v1/emails/{transaction_id}')
+@routes.get('/api/v1/emails/transactions/{transaction_id}')
 async def check_email(request: web.Request):
     transaction_id = request.match_info['transaction_id']
 
     transaction_data = await check_transaction_status(transaction_id, request.app['config']['API_KEY'])
 
     if not transaction_data['success']:
-        raise web.HTTPNotFound(content_type='application/json', body=json.dumps({'error': transaction_data['error']}))
+        raise web.HTTPNotFound(content_type='application/json',
+                               body=json.dumps({'error': transaction_data['error']}))
 
-    message_data = await check_message_status(transaction_data['data']['messageids'][0], request.app['config']['API_KEY'])
-    
-    return web.Response(status=200, content_type='application/json', body=json.dumps({'transaction': transaction_data, 'message': message_data}))
+    return web.Response(status=200, content_type='application/json', body=json.dumps(transaction_data))
+
+
+@routes.get('/api/v1/emails/messages/{message_id}')
+async def get_message_data(request: web.Request):
+    message_id = request.match_info['message_id']
+    message_data = await check_message_status(message_id, request.app['config']['API_KEY'])
+
+    if not message_data['success']:
+        raise web.HTTPNotFound(content_type='application/json',
+                               body=json.dumps({'error': message_data['error']}))
+
+    return web.Response(status=200, content_type='application/json', body=json.dumps(message_data))
 
 
 async def email_sender(body: dict, template: str, config: dict, subject='None'):
@@ -57,7 +59,8 @@ async def email_sender(body: dict, template: str, config: dict, subject='None'):
     response = message.send(
         to=body['to_addr'],
         render={'name': 'Djohn Black', 'verify_linc': 'www.fake.linc'},
-        smtp={'host': config['SMTP_SERVER'], 'port': config['SMTP_PORT'], 'tls': True, 'user': config['LOGIN'], 'password': config['PASSWORD']},
+        smtp={'host': config['SMTP_SERVER'], 'port': config['SMTP_PORT'],
+              'tls': True, 'user': config['LOGIN'], 'password': config['PASSWORD']},
     )
     # import ipdb; ipdb.set_trace()
     print(response)
@@ -71,6 +74,7 @@ async def read_template(filename):
     with open(filename, 'r', encoding='utf-8') as template_file:
         template = template_file.read()
     return template
+
 
 async def check_transaction_status(transaction_id: str, api_key: str):
     params = {
@@ -90,6 +94,7 @@ async def check_transaction_status(transaction_id: str, api_key: str):
     async with ClientSession() as session:
         async with session.get('https://api.elasticemail.com/v2/email/getstatus', params=params) as response:
             return await response.json()
+
 
 async def check_message_status(message_id: str, api_key: str):
     params = {

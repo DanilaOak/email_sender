@@ -1,0 +1,6 @@
+aiohttp
+uvloop
+emails
+pyaml
+webargs
+jinja2
