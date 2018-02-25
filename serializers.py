@@ -66,7 +66,7 @@ class BaseStrictSchema(Schema):
                     raise InvalidParameterException(key)
 
 class PatchUserSchema(BaseStrictSchema):
-    to_addr = fields.String(required=True)
+    to_addr = fields.List(fields.String(),required=True)
     msg = fields.String(required=True)
     subject = fields.String(required=False)
 

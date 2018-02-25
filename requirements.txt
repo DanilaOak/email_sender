@@ -4,3 +4,4 @@ emails
 pyaml
 webargs
 jinja2
+motor

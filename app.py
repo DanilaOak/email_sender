@@ -5,6 +5,7 @@ import logging
 
 from aiohttp import web
 import uvloop
+from motor import motor_asyncio
 
 from utils import get_config
 from view import routes
@@ -22,6 +23,9 @@ def create_app(config=None):
     app['executor'] = ProcessPoolExecutor(cpu_count)
     app['config'] = config
     app.router.add_routes(routes)
+    # db connection
+    app.client = motor_asyncio.AsyncIOMotorClient(config['MONGO_HOST'])
+    app.db = app.client[config['MONGO_DB_NAME']]
     return app
 
 if __name__ == '__main__':
