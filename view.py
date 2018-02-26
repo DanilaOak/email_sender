@@ -20,7 +20,7 @@ async def send_email(request: web.Request, body):
     if 'subject' in body:
         subject = body['subject']
 
-    template = await read_template(os.path.join(base_dir, 'email_template.html'))
+    template = await read_template(os.path.join(base_dir, '{}.html'.format(body['email_type'])))
 
     response = await email_sender(body, template, request.app['config'], subject)
     await transaction.save(response['transaction_id'])
@@ -95,11 +95,11 @@ async def email_sender(body: dict, template: str, config: dict, subject='None'):
     message = emails.html(
         subject=subject,
         html=T(template),
-        mail_from=('My StartUP', config['EMAIL_ADDRESS'])
+        mail_from=('Ardas Inc', config['EMAIL_ADDRESS'])
     )
     response = message.send(
         to=body['to_addr'],
-        render={'name': 'Djohn Black', 'verify_linc': 'www.fake.linc'},
+        render={'to_name': body['to_name'], 'linc': body['linc']},
         smtp={'host': config['SMTP_SERVER'], 'port': config['SMTP_PORT'],
               'tls': True, 'user': config['LOGIN'], 'password': config['PASSWORD']},
     )
@@ -107,9 +107,9 @@ async def email_sender(body: dict, template: str, config: dict, subject='None'):
     text = response.status_text.decode('utf-8')
 
     if status != 250:
-        raise web.HTTPUnprocessableEntity(content_type='application/json', body=json.dumps({'error': text}))
+        raise web.HTTPUnprocessableEntity(content_type='application/json', body=json.dumps({'success': False, 'error': text}))
 
-    return {'status': status, 'transaction_id': text.split()[1]}
+    return {'success': True, 'transaction_id': text.split()[1]}
 
 
 async def read_template(filename):

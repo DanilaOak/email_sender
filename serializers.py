@@ -4,7 +4,7 @@ import json
 
 from aiohttp import web
 from webargs.aiohttpparser import parser
-from marshmallow import fields, validates_schema, Schema, ValidationError
+from marshmallow import fields, validates_schema, Schema, ValidationError, validate
 from marshmallow.compat import iteritems
 
 
@@ -65,10 +65,13 @@ class BaseStrictSchema(Schema):
 
                     raise InvalidParameterException(key)
 
-class PatchUserSchema(BaseStrictSchema):
+class PostEmailSchema(BaseStrictSchema):
     to_addr = fields.List(fields.String(),required=True)
-    msg = fields.String(required=True)
-    subject = fields.String(required=False)
+    to_name = fields.String(required=True)
+    email_type = fields.String(required=True, validate=validate.OneOf(['restore_password']))
+    msg = fields.String(required=False, missing='')
+    linc = fields.String(required=True)
+    subject = fields.String(required=False, missing='None')
 
     class Meta:
         strict = True
@@ -83,5 +86,5 @@ class InvalidParameterException(Exception):
 
 
 schemas = {
-    'post_email': PatchUserSchema,
+    'post_email': PostEmailSchema,
 }
