@@ -1,16 +1,26 @@
 import asyncio
 import multiprocessing
 from concurrent.futures import ProcessPoolExecutor
-import logging
 
 from aiohttp import web
 import uvloop
 from motor import motor_asyncio
 
 from utils import get_config
-from view import routes
+from view import routes, listen_to_rabbit
+
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+
+
+async def start_background_tasks(app):
+    app['rabbit_listener'] = app.loop.create_task(listen_to_rabbit(app))
+
+
+async def cleanup_background_tasks(app):
+    app['rabbit_listener'].cancel()
+    await app['rabbit_listener']
+
 
 def create_app(config=None):
 
@@ -26,7 +36,10 @@ def create_app(config=None):
     # db connection
     app.client = motor_asyncio.AsyncIOMotorClient(config['MONGO_HOST'])
     app.db = app.client[config['MONGO_DB_NAME']]
+    app.on_startup.append(start_background_tasks)
+    app.on_cleanup.append(cleanup_background_tasks)
     return app
+
 
 if __name__ == '__main__':
     app = create_app()

@@ -1,12 +1,16 @@
 import json
 import os
+import asyncio
 
 from aiohttp import web, ClientSession
 import emails
 from emails.template import JinjaTemplate as T
+from pika.exceptions import ChannelClosed
 
 from serializers import serialize_body
-from models import Transaction, Message
+from models import Transaction, Message, DataBase
+from email_sender import Email, check_message_status, check_transaction_status
+from rabbit import RabbitConnector
 
 routes = web.RouteTableDef()
 base_dir = os.path.abspath(os.path.curdir)
@@ -27,6 +31,62 @@ async def send_email(request: web.Request, body):
 
     return web.Response(status=200, content_type='application/json', body=json.dumps(response))
 
+
+async def listen_to_rabbit(app):
+    try:
+        rmq = RabbitConnector(app['config'], app.loop)
+        await rmq.connect()
+        await rmq.declare_queue(app['config']['RMQ_CONSUME_QUEUE'])
+        email = Email(app['config'])
+        db = DataBase(app.db)
+        print('[*] Waiting for messages. To exit press CTRL+C')
+        async for message in rmq.queue:
+            print('New message')
+            message_data = json.loads(message.body.decode())
+            try:
+                # import ipdb;
+                # ipdb.set_trace()
+                # response = await email.send(message_data)
+                response = {'success': True, 'error': 'Some error'}
+
+                if not response['success']:
+                    message_data.update({'error': response['error']})
+                    await rmq.produce(message_data, 'email_error')
+                    message.reject()
+                    continue
+
+                response = {'success': True, 'transaction_id': '1231415555213'}
+
+                # await db.transaction.save(response['transaction_id'])
+                future = asyncio.ensure_future(
+                    check_status(response['transaction_id'], app['config']['API_KEY']))
+                print(future)
+                # import ipdb; ipdb.set_trace()
+                print('affter')
+                message.ack()
+                print('accept message')
+            except ChannelClosed:
+                pass
+            except Exception as ex:
+                message_data.update({'error': repr(ex)})
+                await rmq.produce(message_data, 'email_error')
+                message.reject()
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        await rmq.close()
+    except Exception as ex:
+        await listen_to_rabbit(app)
+
+
+async def check_status(transaction_id, api_key):
+    while True:
+        status = check_transaction_status(transaction_id, api_key)
+        if status['success']:
+            break
+        asyncio.sleep(3)
+
+    print(status)
+
+
 @routes.get('/api/v1/transactions')
 async def get_all_transactions(request: web.Request):
     transactions = Transaction(request.app.db)
@@ -36,7 +96,6 @@ async def get_all_transactions(request: web.Request):
         if 'created' in trans:
             trans['created'] = str(trans['created'])
     return web.Response(status=200, content_type='application/json', body= json.dumps(get_all))
-
 
 
 @routes.get('/api/v1/emails/transactions/{transaction_id}')
@@ -80,6 +139,7 @@ async def get_message_data(request: web.Request):
 
     return web.Response(status=200, content_type='application/json', body=json.dumps(message_data))
 
+
 @routes.get('/api/v1/emails/messages')
 async def get_all_messages(request: web.Request):
     messages = Message(request.app.db)
@@ -116,33 +176,3 @@ async def read_template(filename):
     with open(filename, 'r', encoding='utf-8') as template_file:
         template = template_file.read()
     return template
-
-
-async def check_transaction_status(transaction_id: str, api_key: str):
-    params = {
-        'transactionID': transaction_id,
-        'apikey': api_key,
-        'showFailed': 'true',
-        'showErrors': 'true',
-        'showMessageIDs': 'true',
-        'showAbuse': 'true',
-        'showClicked': 'true',
-        'showDelivered': 'true',
-        'showOpened': 'true',
-        'showPending': 'true',
-        'showSent': 'true',
-        'showUnsubscribed': 'true',
-    }
-    async with ClientSession() as session:
-        async with session.get('https://api.elasticemail.com/v2/email/getstatus', params=params) as response:
-            return await response.json()
-
-
-async def check_message_status(message_id: str, api_key: str):
-    params = {
-        'apikey': api_key,
-        'messageID': message_id,
-    }
-    async with ClientSession() as session:
-        async with session.get('https://api.elasticemail.com/v2/email/status', params=params) as response:
-            return await response.json()

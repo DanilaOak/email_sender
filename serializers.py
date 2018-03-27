@@ -65,8 +65,9 @@ class BaseStrictSchema(Schema):
 
                     raise InvalidParameterException(key)
 
+
 class PostEmailSchema(BaseStrictSchema):
-    to_addr = fields.List(fields.String(),required=True)
+    to_addr = fields.List(fields.String(), required=True)
     to_name = fields.String(required=True)
     email_type = fields.String(required=True, validate=validate.OneOf(['restore_password']))
     msg = fields.String(required=False, missing='')

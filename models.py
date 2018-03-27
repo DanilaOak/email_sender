@@ -3,10 +3,10 @@ from datetime import datetime
 from settings import MESSAGE_COLLECTION, TRANSACTION_COLLECTION
 
 
-class Transaction():
+class Transaction:
     
-    def __init__(self, db, **kwargs):
-        self.collection = db[TRANSACTION_COLLECTION]
+    def __init__(self, collection, **kwargs):
+        self.collection = collection
     
     async def save(self, transaction_id, **kwargs):
         result = await self.collection.insert(
@@ -26,10 +26,11 @@ class Transaction():
         result = await self.collection.find_one({'transaction_id': transaction_id})
         return result
 
-class Message():
 
-    def __init__(self, db, **kwargs):
-        self.collection = db[MESSAGE_COLLECTION]
+class Message:
+
+    def __init__(self, collection, **kwargs):
+        self.collection = collection
     
     async def save(self, message_id, transaction_id, send_to, created, **kwargs):
         result = await self.collection.insert(
@@ -48,3 +49,10 @@ class Message():
         await self.collection.update_one({'message_id': message_id}, {'$set': data})
         result = await self.collection.find_one({'message_id': message_id})
         return result
+
+
+class DataBase:
+
+    def __init__(self, db: dict):
+        self.transaction = Transaction(db[TRANSACTION_COLLECTION])
+        self.message = Message(db[MESSAGE_COLLECTION])

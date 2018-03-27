@@ -6,12 +6,14 @@ import logging
 
 VERIABLES = ['VERSION']
 
+
 def get_test_config():
     config = get_config()
     config['DB_NAME'] = 'test_database'
     config['PROD'] = False
     config['HOST'] = None
     return config
+
 
 def load_config(file_path):
     with open(file_path, 'r') as conf_file:
