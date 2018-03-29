@@ -1,11 +1,13 @@
 import json
 import os
 import asyncio
+from time import sleep
 
 from aiohttp import web, ClientSession
 import emails
 from emails.template import JinjaTemplate as T
 from pika.exceptions import ChannelClosed
+import aioredis
 
 from serializers import serialize_body
 from models import Transaction, Message, DataBase
@@ -74,6 +76,39 @@ async def listen_to_rabbit(app):
         await listen_to_rabbit(app)
 
 
+async def listen_to_redis(app):
+    try:
+        redis = app['redis']
+        email = Email(app['config'])
+        print('Redis wait for message')
+        while True:
+            if not bool(await redis.llen('email')):
+                continue
+
+            message_data = await redis.lpop('email')
+            message_data = json.loads(message_data)
+            response = await email.send(message_data)
+            # response = {'success': True, 'error': 'Some error'}
+
+            if not response['success']:
+                message_data.update({'error': response['error']})
+                await redis.rpush('email_error', json.dumps(message_data))
+                print('Error')
+                continue
+
+            # response = {'success': True, 'transaction_id': '950daa2c-41de-80dc-c02c-098632a6589e'}
+            asyncio.ensure_future(
+                check_status_redis(app, response['transaction_id']))
+
+    except asyncio.CancelledError:
+        pass
+    except Exception as ex:
+        print(ex)
+    finally:
+        print('Close redis')
+        await app['redis'].quit()
+
+
 async def check_status(app, transaction_id):
     while True:
         print('Sleep ')
@@ -93,6 +128,29 @@ async def check_status(app, transaction_id):
                                    'failed': status['data'].get('failed'),
                                    'messageids': status['data'].get('messageids')},
                                   'email_response')
+            break
+
+
+async def check_status_redis(app, transaction_id):
+    redis = app['redis']
+    while True:
+        print('Sleep ')
+        await asyncio.sleep(10)
+        status = await check_transaction_status(transaction_id, app['config']['API_KEY'])
+        print(status)
+
+        if status['success'] and status['data'].get('messageids'):
+
+            if not (status['data'].get('delivered') or status['data'].get('failed')):
+                continue
+            print('Try to send message')
+            await redis.rpush('email_response', json.dumps({'success': True,
+                                                            'transaction_id': transaction_id,
+                                                            'sent': status['data'].get('sent'),
+                                                            'delivered': status['data'].get('delivered'),
+                                                            'failed': status['data'].get('failed'),
+                                                            'messageids': status['data'].get('messageids')}))
+            print('all done')
             break
 
 

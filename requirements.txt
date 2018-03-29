@@ -5,3 +5,4 @@ pyaml
 webargs
 jinja2
 motor
+aioredis
