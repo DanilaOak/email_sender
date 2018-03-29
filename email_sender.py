@@ -71,10 +71,7 @@ async def check_transaction_status(transaction_id: str, api_key: str):
 
     async with ClientSession() as session:
         async with session.get('https://api.elasticemail.com/v2/email/getstatus', params=params) as response:
-            data = await response.json()
-            print('Sleeeeeep')
-            await asyncio.sleep(5)
-            print(data)
+            return await response.json()
 
 
 async def check_message_status(message_id: str, api_key: str):

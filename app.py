@@ -8,6 +8,8 @@ from motor import motor_asyncio
 
 from utils import get_config
 from view import routes, listen_to_rabbit
+from models import DataBase
+from rabbit import RabbitConnector
 
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
@@ -35,7 +37,9 @@ def create_app(config=None):
     app.router.add_routes(routes)
     # db connection
     app.client = motor_asyncio.AsyncIOMotorClient(config['MONGO_HOST'])
-    app.db = app.client[config['MONGO_DB_NAME']]
+    app.db = DataBase(app.client[config['MONGO_DB_NAME']])
+    app.rmq = RabbitConnector(app['config'], app.loop)
+    app.loop.run_until_complete(app.rmq.connect())
     app.on_startup.append(start_background_tasks)
     app.on_cleanup.append(cleanup_background_tasks)
     return app

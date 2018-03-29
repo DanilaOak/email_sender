@@ -29,7 +29,7 @@ class RabbitConnector:
 
     async def _declare_channel(self):
         'Declare channel'
-        self._channel = await self._conn.channel()
+        return await self._conn.channel()
 
     async def _declare_connection(self):
         'Connect to RMQ'
@@ -42,7 +42,7 @@ class RabbitConnector:
     async def declare_queue(self, queue):
         'Declare consumer queue'
         self.consumer_tag = queue
-        self.queue = await self._channel.declare_queue(queue, durable=True)
+        return await self._channel.declare_queue(queue, durable=True)
 
     async def declare_exchange(self):
         await self._channel.declare_exchange(
@@ -75,7 +75,7 @@ class RabbitConnector:
         self._conn.add_connection_lost_callback(self.connection_lost_callback)
         self._conn.add_reconnect_callback(self.reconnect_callback)
         # declare channel
-        await self._declare_channel()
+        self._channel = await self._declare_channel()
 
     @staticmethod
     def on_open(connection):

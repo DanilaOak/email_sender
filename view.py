@@ -34,34 +34,31 @@ async def send_email(request: web.Request, body):
 
 async def listen_to_rabbit(app):
     try:
-        rmq = RabbitConnector(app['config'], app.loop)
-        await rmq.connect()
-        await rmq.declare_queue(app['config']['RMQ_CONSUME_QUEUE'])
+        # rmq = RabbitConnector(app['config'], app.loop)
+        # await app.rmq.connect()
+        consume_queue = await app.rmq.declare_queue(app['config']['RMQ_CONSUME_QUEUE'])
         email = Email(app['config'])
-        db = DataBase(app.db)
         print('[*] Waiting for messages. To exit press CTRL+C')
-        async for message in rmq.queue:
+        async for message in consume_queue:
             print('New message')
             message_data = json.loads(message.body.decode())
             try:
                 # import ipdb;
                 # ipdb.set_trace()
-                # response = await email.send(message_data)
-                response = {'success': True, 'error': 'Some error'}
+                response = await email.send(message_data)
+                # response = {'success': True, 'error': 'Some error'}
 
                 if not response['success']:
                     message_data.update({'error': response['error']})
-                    await rmq.produce(message_data, 'email_error')
+                    await app.rmq.produce(message_data, app['config']['RMQ_PRODUCER_ERROR'])
                     message.reject()
                     continue
 
-                response = {'success': True, 'transaction_id': '1231415555213'}
+                # response = {'success': True, 'transaction_id': '950daa2c-41de-80dc-c02c-098632a6589e'}
 
-                # await db.transaction.save(response['transaction_id'])
-                future = asyncio.ensure_future(
-                    check_status(response['transaction_id'], app['config']['API_KEY']))
-                print(future)
-                # import ipdb; ipdb.set_trace()
+                # await app.db.transaction.save(response['transaction_id'])
+                asyncio.ensure_future(
+                    check_status(app, response['transaction_id']))
                 print('affter')
                 message.ack()
                 print('accept message')
@@ -69,22 +66,34 @@ async def listen_to_rabbit(app):
                 pass
             except Exception as ex:
                 message_data.update({'error': repr(ex)})
-                await rmq.produce(message_data, 'email_error')
+                await app.rmq.produce(message_data, app['config']['RMQ_PRODUCER_ERROR'])
                 message.reject()
     except (asyncio.CancelledError, KeyboardInterrupt):
-        await rmq.close()
+        await app.rmq.close()
     except Exception as ex:
         await listen_to_rabbit(app)
 
 
-async def check_status(transaction_id, api_key):
+async def check_status(app, transaction_id):
     while True:
-        status = check_transaction_status(transaction_id, api_key)
-        if status['success']:
-            break
-        asyncio.sleep(3)
+        print('Sleep ')
+        await asyncio.sleep(10)
+        status = await check_transaction_status(transaction_id, app['config']['API_KEY'])
+        print(status)
 
-    print(status)
+        if status['success'] and status['data'].get('messageids'):
+
+            if not (status['data'].get('delivered') or status['data'].get('failed')):
+                continue
+
+            await app.rmq.produce({'success': True,
+                                   'transaction_id': transaction_id,
+                                   'sent': status['data'].get('sent'),
+                                   'delivered': status['data'].get('delivered'),
+                                   'failed': status['data'].get('failed'),
+                                   'messageids': status['data'].get('messageids')},
+                                  'email_response')
+            break
 
 
 @routes.get('/api/v1/transactions')
@@ -95,7 +104,7 @@ async def get_all_transactions(request: web.Request):
         del trans['_id']
         if 'created' in trans:
             trans['created'] = str(trans['created'])
-    return web.Response(status=200, content_type='application/json', body= json.dumps(get_all))
+    return web.Response(status=200, content_type='application/json', body=json.dumps(get_all))
 
 
 @routes.get('/api/v1/emails/transactions/{transaction_id}')
